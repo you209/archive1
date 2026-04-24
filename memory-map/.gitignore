@@ -1,0 +1,9 @@
+backend/.venv/
+backend/storage/memory_map.db
+backend/storage/photos/*
+backend/storage/exports/*
+frontend/node_modules/
+frontend/dist/
+
+**/__pycache__/
+*.pyc
