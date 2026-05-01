@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+body {
+  @apply text-slate-100 bg-gradient-to-br from-slate-950 via-slate-900 to-purple-950 min-h-screen;
+}
+
+.card {
+  @apply rounded-2xl border border-slate-700/40 bg-slate-900/50 backdrop-blur p-4 shadow-xl;
+}
