@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Test App</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #0f172a; color: #e2e8f0; }
+    .card { max-width: 680px; margin: 10vh auto; padding: 2rem; background: #1e293b; border-radius: 12px; }
+    h1 { margin-top: 0; }
+    button { background: #22c55e; border: 0; color: #052e16; font-weight: bold; padding: .7rem 1rem; border-radius: 8px; cursor: pointer; }
+    #status { margin-top: 1rem; color: #86efac; }
+    code { background: #334155; padding: .1rem .3rem; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Quick Test App</h1>
+    <p>This is a tiny app for fast manual testing.</p>
+    <p>Local URL: <code>http://localhost:8080</code></p>
+    <button id="testBtn">Run UI Test</button>
+    <div id="status">Waiting for test...</div>
+  </div>
+  <script>
+    const button = document.getElementById('testBtn');
+    const status = document.getElementById('status');
+    button.addEventListener('click', () => {
+      const now = new Date().toLocaleString();
+      status.textContent = `✅ Test click worked at ${now}`;
+    });
+  </script>
+</body>
+</html>
