@@ -97,8 +97,8 @@ class DealStore(context: Context) {
         Shop("Cotton On", "https://cottonon.com", mode = "BROWSE", browseUrl = "https://cottonon.com/AU/co/co-sale/sale-womens/"),
         Shop("Sportsgirl", "https://www.sportsgirl.com.au", mode = "BROWSE", browseUrl = "https://www.sportsgirl.com.au/sale/sale-clothing"),
         Shop("Glassons", "https://www.glassons.com", mode = "BROWSE", browseUrl = "https://www.glassons.com/c/sale"),
-        Shop("Supre", "https://supre.com.au", mode = "BROWSE", browseUrl = "https://supre.com.au/AU/sale/"),
-        Shop("Dotti", "https://www.dotti.com.au", mode = "BROWSE", browseUrl = "https://www.dotti.com.au/shop/en/dotti/sale")
+        Shop("Supre", "https://supre.com.au", mode = "BROWSE", browseUrl = "https://supre.com.au/sale/"),
+        Shop("Dotti", "https://dotti.jgl.com.au", mode = "BROWSE", browseUrl = "https://dotti.jgl.com.au/shop/do-womens-sale-all")
     )
 
     fun shops(): List<Shop> {
@@ -141,7 +141,7 @@ class DealStore(context: Context) {
         val canonical = "https://${url.host.lowercase(Locale.ROOT)}"
         val current = shops()
         if (current.any { it.baseUrl == canonical }) return false
-        saveShops(current + Shop(name.take(40).ifBlank { url.host }, canonical))
+        saveShops(current + Shop(name.take(40).ifBlank { url.host }, canonical, mode = "BROWSE", browseUrl = canonical))
         return true
     }
 
