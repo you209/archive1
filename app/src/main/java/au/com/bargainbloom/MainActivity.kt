@@ -78,6 +78,11 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
     var maxPrice by remember { mutableIntStateOf(repo.maxPrice()) }
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("All") }
+    var typeChoice by remember { mutableStateOf("Any") }
+    var colourChoice by remember { mutableStateOf("Any") }
+    var sizeChoice by remember { mutableStateOf("Any") }
+    var storeChoice by remember { mutableStateOf("Any") }
+    var browseStores by remember { mutableStateOf(false) }
     var onlyFav by remember { mutableStateOf(false) }
     var sortDiscount by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
@@ -113,13 +118,19 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
         if (data.isEmpty()) scan()
     }
 
-    val filtered = remember(data, fav, maxPrice, query, category, onlyFav, sortDiscount) {
+    val filtered = remember(data, fav, maxPrice, query, category, typeChoice, colourChoice, sizeChoice, storeChoice, onlyFav, sortDiscount) {
         data.asSequence()
-            .filter { it.price <= maxPrice }
             .filter { !onlyFav || it.id in fav }
             .filter { category == "All" || it.category == category }
+            .filter { typeChoice == "Any" || it.clothingType == typeChoice }
+            .filter { storeChoice == "Any" || it.store == storeChoice }
             .filter { query.isBlank() || "${it.name} ${it.store} ${it.tags}".contains(query.trim(), ignoreCase = true) }
-            .let { if (sortDiscount) it.sortedWith(compareByDescending<Deal> { d -> d.discount }.thenBy { d -> d.price }) else it.sortedWith(compareBy { d -> d.price }) }
+            .mapNotNull { it.matching(sizeChoice, colourChoice) }
+            .filter { it.price <= maxPrice }
+            .let { matches ->
+                if (sortDiscount) matches.sortedWith(compareByDescending<DealMatch> { it.deal.discount }.thenBy { it.price })
+                else matches.sortedBy { it.price }
+            }
             .toList()
     }
 
@@ -155,10 +166,33 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                         valueRange = 5f..100f, steps = 18, modifier = Modifier.weight(1f)
                     )
                 }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    FilterChip(selected = !browseStores, onClick = { browseStores = false }, label = { Text("Photo deals") })
+                    FilterChip(selected = browseStores, onClick = { browseStores = true }, label = { Text("All retailers") })
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     listOf("All", "Coquette", "Y2K", "Goth / alt", "Lounge", "Other").forEach { chip ->
                         FilterChip(selected = category == chip, onClick = { category = chip }, label = { Text(chip) })
                     }
+                }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ChoiceFilter("Clothing", typeChoice,
+                        listOf("Any", "Tops", "Dresses", "Skirts", "Shorts", "Pants", "Underwear", "Stockings", "Sleepwear", "Outerwear", "Shoes", "Other")
+                    ) { typeChoice = it }
+                    ChoiceFilter("Colour", colourChoice,
+                        listOf("Any", "Black", "White", "Pink", "Red", "Purple", "Blue", "Green", "Brown", "Cream", "Beige", "Grey", "Yellow", "Orange", "Navy", "Multi")
+                    ) { colourChoice = it }
+                    ChoiceFilter("Size", sizeChoice,
+                        listOf("Any", "4", "6", "8", "10", "12", "14", "16", "18", "20", "22", "24", "26", "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL")
+                    ) { sizeChoice = it }
+                    ChoiceFilter("Store", storeChoice,
+                        listOf("Any") + repo.shops().filter { it.enabled && it.isFeed }.map { it.name }
+                    ) { storeChoice = it }
+                }
+                if (sizeChoice != "Any" || colourChoice != "Any" || typeChoice != "Any" || storeChoice != "Any") {
+                    TextButton(onClick = {
+                        sizeChoice = "Any"; colourChoice = "Any"; typeChoice = "Any"; storeChoice = "Any"
+                    }, contentPadding = PaddingValues(0.dp)) { Text("Clear all filters") }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = onlyFav, onClick = { onlyFav = !onlyFav }, label = { Text("♥ Saved") })
@@ -171,6 +205,7 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                     val last = repo.lastScan()
                     Text(
                         when {
+                            browseStores -> "Open live sale pages at Australian retailers"
                             report.isNotBlank() -> report
                             last != 0L -> "${filtered.size} finds · Last check ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(last))}"
                             else -> "Press refresh to search supported stores"
@@ -184,7 +219,25 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                     }
                 }
             }
-            if (filtered.isEmpty()) {
+            if (browseStores) {
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Browse live clothing photos and prices at each store. Browse-only shops cannot populate the automatic photo-deals grid.",
+                        style = MaterialTheme.typography.bodySmall, color = mauve
+                    )
+                    repo.shops().filter { it.enabled }.forEach { shop ->
+                        RetailerCard(
+                            shop = shop,
+                            onBrowse = { openLink(shop.browseUrl) },
+                            onSearch = { openLink(searchThisStore(shop, query, typeChoice, colourChoice, sizeChoice, maxPrice)) }
+                        )
+                    }
+                    Spacer(Modifier.height(18.dp))
+                }
+            } else if (filtered.isEmpty()) {
                 Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
                     Text(if (working) "Searching for tiny prices…" else "No matching finds yet. Try a higher price or refresh the stores.", color = mauve)
                 }
@@ -194,9 +247,12 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                     contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(filtered, key = { it.id }) { deal ->
+                    items(filtered, key = { it.deal.id }) { match ->
+                        val deal = match.deal
                         DealCard(
-                            deal = deal, saved = deal.id in fav, history = repo.recentPrices(deal.id),
+                            deal = deal, displayedPrice = match.price, displayedPhoto = match.photo,
+                            selectedSize = sizeChoice, selectedColour = colourChoice,
+                            saved = deal.id in fav, history = repo.recentPrices(deal.id),
                             onFavourite = { repo.toggleFavourite(deal.id); fav = repo.favourites() },
                             onOpen = { openLink(deal.link) }
                         )
@@ -217,13 +273,16 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
 }
 
 @Composable
-private fun DealCard(deal: Deal, saved: Boolean, history: List<Double>, onFavourite: () -> Unit, onOpen: () -> Unit) {
+private fun DealCard(
+    deal: Deal, displayedPrice: Double, displayedPhoto: String, selectedSize: String, selectedColour: String,
+    saved: Boolean, history: List<Double>, onFavourite: () -> Unit, onOpen: () -> Unit
+) {
     ElevatedCard(shape = RoundedCornerShape(19.dp), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.background(Color.White).clickable(onClick = onOpen)) {
             Box(Modifier.fillMaxWidth().height(166.dp)) {
-                if (deal.photo.isNotBlank()) {
+                if (displayedPhoto.isNotBlank()) {
                     AsyncImage(
-                        model = deal.photo, contentDescription = deal.name,
+                        model = displayedPhoto, contentDescription = deal.name,
                         contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -233,7 +292,7 @@ private fun DealCard(deal: Deal, saved: Boolean, history: List<Double>, onFavour
                     onClick = onFavourite, modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
                         .background(Color.White.copy(alpha = 0.93f), RoundedCornerShape(24.dp))
                 ) { Icon(if (saved) Icons.Default.Favorite else Icons.Default.FavoriteBorder, contentDescription = "Save favourite", tint = berry) }
-                if (deal.discount >= 15) Surface(
+                if (deal.discount >= 15 && displayedPrice == deal.price) Surface(
                     modifier = Modifier.align(Alignment.BottomStart).padding(7.dp), color = berry,
                     shape = RoundedCornerShape(8.dp)
                 ) { Text("${deal.discount}% off", Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = Color.White, fontSize = 11.sp) }
@@ -242,15 +301,17 @@ private fun DealCard(deal: Deal, saved: Boolean, history: List<Double>, onFavour
                 Text(deal.store, style = MaterialTheme.typography.labelSmall, color = berry, maxLines = 1)
                 Text(deal.name, maxLines = 2, minLines = 2, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 16.sp)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("A$%.2f".format(deal.price), fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = berry)
+                    Text("A$%.2f".format(displayedPrice), fontSize = 19.sp, fontWeight = FontWeight.ExtraBold, color = berry)
                 }
-                if (deal.comparePrice != null && deal.comparePrice > deal.price) {
+                if (displayedPrice == deal.price && deal.comparePrice != null && deal.comparePrice > deal.price) {
                     Text("Compare-at A$%.2f".format(deal.comparePrice), color = Color.Gray, fontSize = 10.sp)
                 }
                 if (history.size > 1) {
                     Text("Recorded: " + history.takeLast(3).joinToString(" → ") { "A$%.0f".format(it) }, fontSize = 10.sp, color = mauve)
                 }
-                if (deal.availableSizes.isNotBlank()) Text("Listed sizes: ${deal.availableSizes}", color = mauve, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (selectedSize != "Any") Text("In stock size: $selectedSize", color = mauve, fontSize = 10.sp)
+                else if (deal.availableSizes.isNotBlank()) Text("Listed sizes: ${deal.availableSizes}", color = mauve, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (selectedColour != "Any") Text("Colour: $selectedColour", color = mauve, fontSize = 10.sp)
                 val daysOld = ((System.currentTimeMillis() - deal.lastSeen) / 86_400_000L).toInt()
                 if (daysOld > 0) Text("Cached · last seen $daysOld day(s) ago", fontSize = 10.sp, color = Color(0xFFA05A1A))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -273,7 +334,7 @@ private fun ShopDialog(repo: DealStore, onClose: () -> Unit, onRefresh: () -> Un
         title = { Text("Stores to check") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Checks publicly accessible Shopify feeds. Stores may block or disable their feed.", style = MaterialTheme.typography.bodySmall)
+                Text("Some stores support direct price scanning. Browse-only retailers have live sale links, but are not automatically scanned.", style = MaterialTheme.typography.bodySmall)
                 current.forEach { shop ->
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
@@ -282,7 +343,7 @@ private fun ShopDialog(repo: DealStore, onClose: () -> Unit, onRefresh: () -> Un
                         )
                         Column(Modifier.weight(1f)) {
                             Text(shop.name, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                            Text(shop.baseUrl.removePrefix("https://"), fontSize = 10.sp, color = Color.Gray)
+                            Text((if (shop.isFeed) "Auto-feed · " else "Browse-only · ") + shop.baseUrl.removePrefix("https://"), fontSize = 10.sp, color = Color.Gray)
                         }
                         IconButton(onClick = { repo.removeShop(shop.baseUrl); current = repo.shops() }) {
                             Icon(Icons.Default.Close, contentDescription = "Remove ${shop.name}")
@@ -303,4 +364,58 @@ private fun ShopDialog(repo: DealStore, onClose: () -> Unit, onRefresh: () -> Un
         confirmButton = { TextButton(onClick = { onClose(); onRefresh() }) { Text("Save & scan") } },
         dismissButton = { TextButton(onClick = onClose) { Text("Close") } }
     )
+}
+
+@Composable
+private fun ChoiceFilter(label: String, selected: String, values: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        OutlinedButton(
+            onClick = { expanded = true },
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+            shape = RoundedCornerShape(14.dp)
+        ) { Text("$label: $selected", maxLines = 1, fontSize = 12.sp) }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            values.forEach { value ->
+                DropdownMenuItem(text = { Text(value) }, onClick = { onSelect(value); expanded = false })
+            }
+        }
+    }
+}
+
+@Composable
+private fun RetailerCard(shop: Shop, onBrowse: () -> Unit, onSearch: () -> Unit) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(shop.name, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, modifier = Modifier.weight(1f))
+                Surface(color = if (shop.isFeed) rose else Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)) {
+                    Text(if (shop.isFeed) "Auto-feed" else "Browse only",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        fontSize = 10.sp, color = mauve)
+                }
+            }
+            Text(
+                if (shop.isFeed) "Photos and prices where its public feed is accessible"
+                else "View the retailer's live photos, prices, colours and available sizes",
+                style = MaterialTheme.typography.bodySmall, color = mauve
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = onBrowse) { Text("Open sale", fontSize = 12.sp) }
+                OutlinedButton(onClick = onSearch) { Text("Search filters", fontSize = 12.sp) }
+            }
+        }
+    }
+}
+
+private fun searchThisStore(shop: Shop, query: String, type: String, colour: String, size: String, maxPrice: Int): String {
+    val domain = Uri.parse(shop.baseUrl).host.orEmpty()
+    val terms = listOfNotNull("site:$domain", "women", "sale",
+        query.takeIf { it.isNotBlank() },
+        type.takeIf { it != "Any" },
+        colour.takeIf { it != "Any" },
+        size.takeIf { it != "Any" }?.let { "size $it" },
+        "under AUD $maxPrice"
+    )
+    return "https://www.google.com/search?q=" + java.net.URLEncoder.encode(terms.joinToString(" "), "UTF-8")
 }
