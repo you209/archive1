@@ -74,7 +74,8 @@ fun BloomOutfits(extras: BloomExtras, deals: List<Deal>, open: (String) -> Unit)
                         }
                     }
                     val quote = idea.shipping
-                    if (quote.total != null) Text("Est. delivered " + aud(quote.total) + " (entered shipping)", color = plum, fontSize = 11.sp)
+                    val delivered = quote.total
+                    if (delivered != null) Text("Est. delivered " + aud(delivered) + " (entered shipping)", color = plum, fontSize = 11.sp)
                     else Text("Delivery not included. Unknown: " + quote.unknownStores.joinToString(), color = plum, fontSize = 11.sp)
                     Text("Tap each item to check stock, exact size and checkout price.", fontSize = 10.sp, color = Color.Gray)
                 }
