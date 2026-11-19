@@ -1,7 +1,7 @@
 name: Build Bargain Bloom APK
 on:
   push:
-    branches: ["build/bargain-bloom-apk-2026-11-19"]
+    branches: ["feature/bargain-bloom-v03-20261119"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: Bargain-Bloom-Android-APK
+          name: Bargain-Bloom-v0.3-Android-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

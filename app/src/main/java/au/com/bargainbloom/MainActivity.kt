@@ -28,6 +28,9 @@ import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Checkroom
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,6 +56,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repo = DealStore(applicationContext)
+        val extras = BloomExtras(applicationContext)
         DealWorker.schedule(applicationContext)
         setContent {
             MaterialTheme(
@@ -61,6 +65,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 BloomScreen(
                     repo = repo,
+                    extras = extras,
                     openLink = { link ->
                         try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) } catch (_: Exception) { }
                     }
@@ -72,7 +77,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
+private fun BloomScreen(repo: DealStore, extras: BloomExtras, openLink: (String) -> Unit) {
     var data by remember { mutableStateOf(repo.deals()) }
     var fav by remember { mutableStateOf(repo.favourites()) }
     var maxPrice by remember { mutableIntStateOf(repo.maxPrice()) }
@@ -83,6 +88,7 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
     var sizeChoice by remember { mutableStateOf("Any") }
     var storeChoice by remember { mutableStateOf("Any") }
     var browseStores by remember { mutableStateOf(false) }
+    var section by remember { mutableStateOf("Deals") }
     var onlyFav by remember { mutableStateOf(false) }
     var sortDiscount by remember { mutableStateOf(false) }
     var working by remember { mutableStateOf(false) }
@@ -148,7 +154,35 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                 IconButton(onClick = { showShops = true }) { Icon(Icons.Default.Settings, contentDescription = "Manage stores") }
             }
         )
+    }, bottomBar = {
+        NavigationBar(containerColor = Color.White) {
+            listOf("Deals", "Outfits", "Discover", "Saved", "Stores").forEach { page ->
+                NavigationBarItem(
+                    selected = section == page,
+                    onClick = { section = page },
+                    icon = { Icon(when (page) {
+                        "Outfits" -> Icons.Default.Checkroom
+                        "Discover" -> Icons.Default.AutoAwesome
+                        "Saved" -> Icons.Default.Favorite
+                        "Stores" -> Icons.Default.Storefront
+                        else -> Icons.Default.Search
+                    }, contentDescription = page) },
+                    label = { Text(page, fontSize = 10.sp) },
+                    alwaysShowLabel = true
+                )
+            }
+        }
     }) { inset ->
+        if (section != "Deals") {
+            Box(Modifier.padding(inset).fillMaxSize()) {
+                when (section) {
+                    "Outfits" -> BloomOutfits(extras, data, openLink)
+                    "Discover" -> BloomExplore(extras, repo, data, openLink)
+                    "Saved" -> BloomSaved(extras, repo, data, openLink)
+                    "Stores" -> BloomStores(extras, repo, openLink) { showShops = true }
+                }
+            }
+        } else {
         Column(Modifier.padding(inset).fillMaxSize()) {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
                 OutlinedTextField(
@@ -250,7 +284,7 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                     items(filtered, key = { it.deal.id }) { match ->
                         val deal = match.deal
                         DealCard(
-                            deal = deal, displayedPrice = match.price, displayedPhoto = match.photo,
+                            deal = deal, extras = extras, displayedPrice = match.price, displayedPhoto = match.photo,
                             selectedSize = sizeChoice, selectedColour = colourChoice,
                             saved = deal.id in fav, history = repo.recentPrices(deal.id),
                             onFavourite = { repo.toggleFavourite(deal.id); fav = repo.favourites() },
@@ -259,6 +293,7 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
                     }
                 }
             }
+        }
         }
     }
 
@@ -274,7 +309,7 @@ private fun BloomScreen(repo: DealStore, openLink: (String) -> Unit) {
 
 @Composable
 private fun DealCard(
-    deal: Deal, displayedPrice: Double, displayedPhoto: String, selectedSize: String, selectedColour: String,
+    deal: Deal, extras: BloomExtras, displayedPrice: Double, displayedPhoto: String, selectedSize: String, selectedColour: String,
     saved: Boolean, history: List<Double>, onFavourite: () -> Unit, onOpen: () -> Unit
 ) {
     ElevatedCard(shape = RoundedCornerShape(19.dp), modifier = Modifier.fillMaxWidth()) {
@@ -306,12 +341,27 @@ private fun DealCard(
                 if (displayedPrice == deal.price && deal.comparePrice != null && deal.comparePrice > deal.price) {
                     Text("Compare-at A$%.2f".format(deal.comparePrice), color = Color.Gray, fontSize = 10.sp)
                 }
+                val priceRange = history.takeLast(20)
+                if (priceRange.size > 1 && displayedPrice <= (priceRange.minOrNull() ?: 0.0)) {
+                    Text("Lowest tracked price", fontSize = 10.sp, color = berry, fontWeight = FontWeight.Bold)
+                }
+                if (extras.newlyAdded(deal.id)) Text("New to this app", fontSize = 10.sp, color = mauve)
+                if (extras.recentlyDropped(deal.id)) Text("Recorded price drop", fontSize = 10.sp, color = berry)
+                val shipping = extras.quote(listOf(deal))
+                if (shipping.total != null) {
+                    Text("Est. delivered A$%.2f".format(shipping.total), fontSize = 10.sp, color = mauve)
+                } else {
+                    Text("Shipping not included", fontSize = 10.sp, color = Color.Gray)
+                }
                 if (history.size > 1) {
                     Text("Recorded: " + history.takeLast(3).joinToString(" → ") { "A$%.0f".format(it) }, fontSize = 10.sp, color = mauve)
                 }
                 if (selectedSize != "Any") Text("In stock size: $selectedSize", color = mauve, fontSize = 10.sp)
                 else if (deal.availableSizes.isNotBlank()) Text("Listed sizes: ${deal.availableSizes}", color = mauve, fontSize = 10.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (selectedColour != "Any") Text("Colour: $selectedColour", color = mauve, fontSize = 10.sp)
+                if (deal.variants.isNotEmpty() && extras.fitStatus(deal) == "Preferred size listed") {
+                    Text("Preferred size listed (verify brand fit)", fontSize = 10.sp, color = berry)
+                }
                 val daysOld = ((System.currentTimeMillis() - deal.lastSeen) / 86_400_000L).toInt()
                 if (daysOld > 0) Text("Cached · last seen $daysOld day(s) ago", fontSize = 10.sp, color = Color(0xFFA05A1A))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {

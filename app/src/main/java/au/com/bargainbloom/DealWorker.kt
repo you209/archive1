@@ -23,15 +23,18 @@ class DealWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
     override suspend fun doWork(): Result = try {
         val repo = DealStore(applicationContext)
         val result = repo.scan()
-        if (result.drops.isNotEmpty()) {
-            val wanted = result.drops.filter { it.price <= repo.maxPrice() }.sortedBy { it.price }
-            if (wanted.isNotEmpty()) notifyDrops(wanted)
+        val extras = BloomExtras(applicationContext)
+        val targets = extras.dueAlerts(repo.deals())
+        val wanted = (result.drops.filter { it.price <= repo.maxPrice() } + targets)
+            .distinctBy { it.id }.sortedBy { it.price }
+        if (wanted.isNotEmpty() && notifyDrops(wanted)) {
+            extras.markAlerted(targets)
         }
         Result.success()
     } catch (_: Exception) { Result.retry() }
 
-    private fun notifyDrops(drops: List<Deal>) {
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+    private fun notifyDrops(drops: List<Deal>): Boolean {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(applicationContext, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return false
         val mgr = applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "price_drops"
         if (Build.VERSION.SDK_INT >= 26) mgr.createNotificationChannel(
@@ -47,6 +50,7 @@ class DealWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title).setContentText(body).setAutoCancel(true)
             .setContentIntent(pending).setPriority(NotificationCompat.PRIORITY_DEFAULT).build())
+        return true
     }
 
     companion object {

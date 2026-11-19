@@ -82,7 +82,8 @@ data class Deal(
 data class ScanReport(val scanned: Int, val deals: Int, val drops: List<Deal>, val errors: List<String>)
 
 class DealStore(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences("bargain_bloom", Context.MODE_PRIVATE)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("bargain_bloom", Context.MODE_PRIVATE)
     private val lock = Mutex()
 
 
@@ -98,7 +99,20 @@ class DealStore(context: Context) {
         Shop("Sportsgirl", "https://www.sportsgirl.com.au", mode = "BROWSE", browseUrl = "https://www.sportsgirl.com.au/sale/sale-clothing"),
         Shop("Glassons", "https://www.glassons.com", mode = "BROWSE", browseUrl = "https://www.glassons.com/c/sale"),
         Shop("Supre", "https://supre.com.au", mode = "BROWSE", browseUrl = "https://supre.com.au/sale/"),
-        Shop("Dotti", "https://dotti.jgl.com.au", mode = "BROWSE", browseUrl = "https://dotti.jgl.com.au/shop/do-womens-sale-all")
+        Shop("Dotti", "https://dotti.jgl.com.au", mode = "BROWSE", browseUrl = "https://dotti.jgl.com.au/shop/do-womens-sale-all"),
+        Shop("Bras N Things", "https://www.brasnthings.com", mode = "BROWSE", browseUrl = "https://www.brasnthings.com/all-sale/shop-under-50.html"),
+        Shop("Bonds", "https://www.bonds.com.au", mode = "BROWSE", browseUrl = "https://www.bonds.com.au/sale/womens/underwear.html"),
+        Shop("Cotton On Body", "https://cottonon.com", mode = "BROWSE", browseUrl = "https://cottonon.com/AU/co/co-sale/sale-womens/sale-womens-lingerie/"),
+        Shop("Bendon", "https://www.bendonlingerie.com.au", browseUrl = "https://www.bendonlingerie.com.au/collections/bras-20-and-under"),
+        Shop("Boody", "https://www.boody.com.au", browseUrl = "https://www.boody.com.au/collections/womens-final-sale"),
+        Shop("Nala", "https://wearnala.com", browseUrl = "https://wearnala.com/collections/surplus"),
+        Shop("Love Luna", "https://loveluna.com.au", browseUrl = "https://loveluna.com.au"),
+        Shop("Best & Less", "https://www.bestandless.com.au", mode = "BROWSE", browseUrl = "https://www.bestandless.com.au/womens-underwear-sale"),
+        Shop("THE ICONIC", "https://www.theiconic.com.au", mode = "BROWSE", browseUrl = "https://www.theiconic.com.au/womens-clothing-lingerie-sale/"),
+        Shop("Bimby + Roy", "https://www.bimbyandroy.com.au", mode = "BROWSE", browseUrl = "https://www.bimbyandroy.com.au/collections/shop-all"),
+        Shop("Myer", "https://www.myer.com.au", mode = "BROWSE", browseUrl = "https://www.myer.com.au/c/women/womens-clothing/womens-lingerie"),
+        Shop("David Jones", "https://www.davidjones.com", mode = "BROWSE", browseUrl = "https://www.davidjones.com/women/lingerie"),
+        Shop("H&M", "https://www2.hm.com", mode = "BROWSE", browseUrl = "https://www2.hm.com/en_au/ladies/sale.html")
     )
 
     fun shops(): List<Shop> {
@@ -120,6 +134,12 @@ class DealStore(context: Context) {
         if (!prefs.getBoolean("catalog_v2", false)) {
             val merged = restored + defaults.filterNot { def -> restored.any { it.baseUrl == def.baseUrl } }
             prefs.edit().putBoolean("catalog_v2", true).apply()
+            saveShops(merged)
+            return merged
+        }
+        if (!prefs.getBoolean("catalog_v3", false)) {
+            val merged = restored + defaults.filterNot { candidate -> restored.any { it.name == candidate.name } }
+            prefs.edit().putBoolean("catalog_v3", true).apply()
             saveShops(merged)
             return merged
         }
@@ -225,6 +245,7 @@ class DealStore(context: Context) {
             val json = JSONArray().apply { sorted.forEach { put(it.toJson()) } }
             prefs.edit().putString("deals", json.toString()).putString("history", history.toString())
                 .putLong("last_scan", now).putString("last_errors", errors.joinToString("\n")).apply()
+            BloomExtras(appContext).recordScan(sorted, drops, now)
             ScanReport(scanned, sorted.size, drops, errors)
         }
     }
@@ -236,7 +257,7 @@ class DealStore(context: Context) {
         connection.connectTimeout = 10000
         connection.readTimeout = 15000
         connection.setRequestProperty("Accept", "application/json")
-        connection.setRequestProperty("User-Agent", "BargainBloom/0.1 (personal clothing price watch)")
+        connection.setRequestProperty("User-Agent", "BargainBloom/0.3 (personal clothing price watch)")
         return try {
             val code = connection.responseCode
             if (code != 200) throw IllegalStateException("HTTP $code")
@@ -253,7 +274,7 @@ class DealStore(context: Context) {
         val id = p.optString("id")
         if (title.isBlank() || handle.isBlank() || id.isBlank()) return null
         val all = "$title $kind $tags".lowercase(Locale.ROOT)
-        val wearable = listOf("dress", "skirt", "top", "shirt", "cami", "blouse", "bralette", "bra", "lingerie", "knicker", "panty", "panties", "sock", "stocking", "tights", "corset", "cardigan", "sweater", "jumper", "pant", "short", "bodysuit", "lace", "hoodie", "crop", "jacket", "sleepwear", "pyjama", "fashion", "clothing", "goth", "vest", "leg warmer", "garter").any { all.contains(it) }
+        val wearable = listOf("dress", "skirt", "top", "shirt", "cami", "blouse", "bralette", "bra", "lingerie", "knicker", "panty", "panties", "sock", "stocking", "tights", "corset", "cardigan", "sweater", "jumper", "pant", "short", "bodysuit", "lace", "hoodie", "crop", "jacket", "sleepwear", "pyjama", "fashion", "clothing", "goth", "vest", "leg warmer", "garter", "brief", "bikini", "thong", "bustier", "wirefree", "swim", "bodysuit").any { all.contains(it) }
         if (!wearable || all.contains("gift card")) return null
 
         val options = p.optJSONArray("options")
@@ -307,6 +328,7 @@ class DealStore(context: Context) {
     private fun identifySize(raw: String): String {
         val text = raw.uppercase(Locale.ROOT).trim()
         if (text.isBlank() || text == "DEFAULT TITLE") return ""
+        Regex("(?<![0-9])([6-9]|1[0-9]|2[0-6]|3[0-9]|4[0-6])[A-H](?![A-Z0-9])").find(text)?.let { return it.value }
         Regex("(?<![0-9])(?:AU\\s*)?(4|6|8|10|12|14|16|18|20|22|24|26)(?![0-9])").find(text)?.let { return it.groupValues[1] }
         Regex("(?<![A-Z])(XXXL|XXL|XL|XS|XXS|3XL|2XL|S|M|L)(?![A-Z])").find(text)?.let {
             return when (it.value) { "2XL" -> "XXL"; "3XL" -> "XXXL"; else -> it.value }
@@ -328,7 +350,7 @@ class DealStore(context: Context) {
     private fun identifyType(raw: String): String {
         val t = raw.lowercase(Locale.ROOT)
         return when {
-            listOf("bralette", "bra", "panty", "panties", "knicker", "underwear", "brief", "lingerie", "corset", "garter").any { t.contains(it) } -> "Underwear"
+            listOf("bralette", "bra", "panty", "panties", "knicker", "underwear", "brief", "lingerie", "corset", "garter", "bikini", "thong", "bustier", "wirefree").any { t.contains(it) } -> "Underwear"
             listOf("stocking", "tights", "sock", "fishnet", "leg warmer").any { t.contains(it) } -> "Stockings"
             listOf("dress", "playsuit", "jumpsuit").any { t.contains(it) } -> "Dresses"
             t.contains("skirt") -> "Skirts"
